@@ -1,0 +1,26 @@
+name: Download video
+on:
+  push:
+    paths:
+      - 'request.txt'
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install yt-dlp
+        run: pip install -U yt-dlp
+      - name: Download video
+        run: |
+          URL=$(tr -d '[:space:]' < request.txt)
+          echo "URL: $URL"
+          yt-dlp -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o "video.%(ext)s" "$URL"
+          ls -lh
+      - name: Upload as release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="dl-$(date +%Y%m%d-%H%M%S)"
+          gh release create "$TAG" video.mp4 --title "Video $TAG" --notes "Downloaded from $(tr -d '[:space:]' < request.txt)"
