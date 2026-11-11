@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - 'request.txt'
+  workflow_dispatch:
 jobs:
   download:
     runs-on: ubuntu-latest
@@ -12,12 +13,32 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install yt-dlp
         run: pip install -U yt-dlp
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Download video
         run: |
           URL=$(tr -d '[:space:]' < request.txt)
           echo "URL: $URL"
-          yt-dlp -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o "video.%(ext)s" "$URL"
-          ls -lh
+          yt-dlp -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o "video.%(ext)s" "$URL" || true
+          if [ ! -f video.mp4 ]; then
+            echo "Web client failed, trying Android client..."
+            rm -f video.*
+            yt-dlp --extractor-args "youtube:player_client=android" -f "bv*[height<=1080]+ba/b" --merge-output-format mp4 -o "video.%(ext)s" "$URL" || true
+          fi
+          if [ ! -f video.mp4 ]; then
+            echo "Android client failed, trying iOS client..."
+            rm -f video.*
+            yt-dlp --extractor-args "youtube:player_client=ios" -f "b[height<=1080]" -o "video.%(ext)s" "$URL" || true
+          fi
+          ls -lh video.mp4
+          test -f video.mp4
+          H=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 video.mp4)
+          echo "Height: ${H}px"
+          test "$H" -ge 720
       - name: Upload as release
         env:
           GH_TOKEN: ${{ github.token }}
